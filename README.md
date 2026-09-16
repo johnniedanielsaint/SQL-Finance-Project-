@@ -1,92 +1,96 @@
-# Personal Finance SQL Analysis
+# FinanceDB
 
-A SQL portfolio project that turns a 38-month personal finance ledger
-(Jan 2021 – Feb 2024) into a queryable relational database and answers
-a set of realistic budgeting questions with SQL alone: aggregation,
-CTEs, window functions, and joins.
+A SQL Server database for tracking company revenue, expenses, and
+budget performance over time. Built for SQL Server Management Studio
+(SSMS), starting from a finance spreadsheet export covering January
+2022 through December 2024.
 
-## Project overview
+The project takes a flat transaction log and a flat budget list and
+turns them into a normalized schema with a proper chart of accounts,
+department classifications, and a set of views and stored procedures
+for the reporting questions a finance team actually asks: monthly
+profit and loss, budget vs actual, and top vendors by spend.
 
-The source data (`Finance_Dataset.xlsx`) arrived in a **wide** format:
-one row per category, one column per month. That layout is common in
-spreadsheets but unusable for relational analysis, so step one was an
-ETL pass to **unpivot ("melt") it into a tidy long format**, one row
-per (date, category, amount), before loading it into SQLite.
+## What is in here
 
-**Pipeline:** `xlsx (wide)` → `pandas melt → tidy CSV` → `SQLite (normalized schema)` → `SQL analysis`
-
-## Files in this project
-
-| File | Purpose |
-|---|---|
-| `schema.sql` | Table definitions (DDL) for the two-table schema |
-| `finance_long.csv` | The cleaned, tidy (long-format) dataset used to load the DB |
-| `finance.db` | The finished SQLite database; open it directly and run the queries |
-| `queries.sql` | 17 analysis queries, organized from basic to advanced |
+```
+FinanceDB/
+├── database/
+│   ├── 01_create_database.sql
+│   ├── 02_create_tables.sql
+│   ├── 03_create_indexes.sql
+│   ├── 04_create_views.sql
+│   └── 05_create_stored_procedures.sql
+├── data/
+│   ├── accounts.csv
+│   ├── classifications.csv
+│   ├── transactions.csv
+│   └── budget.csv
+├── scripts/
+│   └── load_data.sql
+├── docs/
+│   ├── data_dictionary.md
+│   ├── er_diagram.md
+│   └── sample_queries.sql
+└── README.md
+```
 
 ## Schema
 
-**`finance_transactions`**: every income, expense, and savings entry
-| column | type | notes |
-|---|---|---|
-| id | INTEGER PK | |
-| txn_date | DATE | first of the month |
-| type | TEXT | `Income`, `Expense`, or `Savings` |
-| category | TEXT | e.g. `Salary`, `House Rent`, `Mutual funds` |
-| amount | REAL | |
+Four tables:
 
-**`savings_target`**: the household's own monthly savings goal, kept
-separate since it's a *rate* (e.g. 0.25 = 25% of income), not a
-transaction:
-| column | type |
-|---|---|
-| txn_date | DATE PK |
-| target_rate | REAL |
+- **Accounts** — the chart of accounts, with a two-level rollup
+  hierarchy (`Level1` / `Level2`) for statement-style reporting.
+- **Classifications** — department codes: `G&A`, `S&M`, `R&D`, `CS`.
+- **Transactions** — every posted invoice, bill, deposit, journal
+  entry, and expense. 1,389 rows.
+- **Budget** — planned monthly amounts by account and department.
+  1,229 rows.
 
-Two tables, joined on `txn_date`, keep the design simple while still
-requiring a real join for the savings-vs-target analysis.
+See `docs/er_diagram.md` for the relationships and `docs/data_dictionary.md`
+for a column by column breakdown of every table, view, and stored
+procedure.
 
-## What the queries cover
+## Setting it up in SSMS
 
-1. **Exploration**: date range, category inventory
-2. **Core aggregation**: monthly income/expense/savings pivot (`CASE WHEN`), net cash flow, yearly totals
-3. **Category analysis**: top expense categories, each category's % share of spend (window function `SUM() OVER ()`)
-4. **Trend analysis**: month-over-month growth (`LAG`), 3-month rolling average, cumulative savings (`SUM() OVER (ORDER BY ...)`), ranking months by spend (`RANK()`)
-5. **Savings rate vs. target**: actual savings rate per month joined against the stated goal, % of months the target was hit
-6. **Derived insights**: best/worst cash-flow month, fastest-growing expense category (2021 vs 2023), salary-change detection
+1. Open SSMS and connect to your SQL Server instance.
+2. Open and run `database/01_create_database.sql`. This creates the
+   `FinanceDB` database.
+3. Run `database/02_create_tables.sql`, then `03_create_indexes.sql`,
+   `04_create_views.sql`, and `05_create_stored_procedures.sql`, in
+   that order.
+4. Copy the `data` folder to a path the SQL Server service account can
+   read (for example `C:\FinanceDB\data\`), and update the
+   `@DataFolder` variable at the top of `scripts/load_data.sql` if you
+   used a different path.
+5. Run `scripts/load_data.sql`. It loads the four CSV files with
+   `BULK INSERT` and prints a row count for each table so you can
+   confirm the load worked.
 
-## Key findings
+If `BULK INSERT` is not available to you (some managed or restricted
+SQL Server instances disable it), you can instead right-click each
+table in SSMS's Object Explorer, choose **Import Flat File**, and
+point it at the matching CSV.
 
-- Across the full period: **₹27.9L income**, **₹12.7L expenses**, **₹17.9L saved**.
-- **House Rent** is the single largest expense category (₹5.08L total), followed by **Groceries & Food** and **EMIs**.
-- The household **met or exceeded its stated savings target in every one of the 38 months**. The target rate itself stepped up from 25% (2021) to 30% (2022 onward), and actual savings tracked well above both.
-- **Health** spend grew the fastest of any category, up **~208%** from 2021 to 2023, followed by **EMIs (+177%)**; worth flagging as the categories most eroding future savings capacity.
-- Salary moved through five distinct steps over the period (₹60,000 → ₹66,000 → ₹70,000 → ₹75,000 → ₹75,600), each detectable directly from the transaction data via a `LAG()` window function rather than being hard-coded.
-- One data-quality note surfaced during EDA: in several months, `Expense + Savings` slightly exceeds `Income`, implying either an untracked income source or that "Savings" here includes rollover/pre-existing balances rather than only *new* money. Worth calling out in a real analysis rather than silently ignoring.
+## Example queries
 
-## How to explore it yourself
+`docs/sample_queries.sql` has working examples for each stored
+procedure, plus a couple of plain SELECT statements against the
+views. A few of the questions it answers:
 
-Any SQLite client works, e.g. [DB Browser for SQLite](https://sqlitebrowser.org/)
-(GUI) or the `sqlite3` CLI:
+- What was net income for a given month?
+- How does 2024 spend compare to 2024 budget for Sales & Marketing?
+- Who are the five vendors we spent the most with last year?
+- Which accounts ran more than 15 percent over budget?
 
-```bash
-sqlite3 finance.db
-.read queries.sql
-```
+## Notes on the source data
 
-Or in Python:
-```python
-import sqlite3, pandas as pd
-conn = sqlite3.connect("finance.db")
-pd.read_sql("SELECT * FROM finance_transactions LIMIT 10", conn)
-```
+The original spreadsheet stored account names with the account code
+baked into the text (for example `40100 SaaS Revenue`). That has been
+split apart here: `AccountCode` and `AccountName` are separate
+columns, and the code lives only in `AccountCode`, so joins and
+lookups do not need string parsing.
 
-## Skills demonstrated
+## License
 
-- Data cleaning / reshaping (wide → long)
-- Relational schema design
-- `GROUP BY` aggregation, `CASE WHEN` pivoting
-- CTEs (`WITH`)
-- Window functions: `LAG`, `RANK`, running `SUM() OVER`, `AVG() OVER (ROWS BETWEEN ...)`
-- Joins across normalized tables
-- Deriving business insights from raw transactional data
+MIT. See `LICENSE`.
