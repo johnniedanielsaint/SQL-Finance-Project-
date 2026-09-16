@@ -39,12 +39,12 @@ FinanceDB/
 
 Four tables:
 
-- **Accounts** — the chart of accounts, with a two-level rollup
+- **Accounts** : the chart of accounts, with a two-level rollup
   hierarchy (`Level1` / `Level2`) for statement-style reporting.
-- **Classifications** — department codes: `G&A`, `S&M`, `R&D`, `CS`.
-- **Transactions** — every posted invoice, bill, deposit, journal
+- **Classifications** : department codes: `G&A`, `S&M`, `R&D`, `CS`.
+- **Transactions** :  every posted invoice, bill, deposit, journal
   entry, and expense. 1,389 rows.
-- **Budget** — planned monthly amounts by account and department.
+- **Budget** : planned monthly amounts by account and department.
   1,229 rows.
 
 See `docs/er_diagram.md` for the relationships and `docs/data_dictionary.md`
